@@ -310,6 +310,16 @@ router.post("/", async (req, res) => {
     // Nunca derruba o processo por erro de entrada
     return res.sendStatus(200);
   }
+  // --- Status Callback para ver entrega no log ---
+router.post("/status", (req, res) => {
+  // Twilio envia application/x-www-form-urlencoded
+  const sid = req.body.MessageSid;
+  const status = req.body.MessageStatus; // queued, sent, delivered, undelivered, failed
+  const errorCode = req.body.ErrorCode;  // se houver
+  console.log("[status]", { sid, status, errorCode });
+  res.sendStatus(200);
+}
+
 });
 
 module.exports = router;
