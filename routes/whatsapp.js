@@ -23,19 +23,38 @@ const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || "https://example.com";
 // --- Sessões simples em memória (MVP) ---
 const sessions = new Map();
 
-// Envio com guarda (não quebra se faltar algo)
+// Envio com guarda + LOGS (não quebra se faltar algo)
 async function sendWhats(to, body, mediaUrl) {
   if (!to || typeof to !== "string" || !to.startsWith("whatsapp:")) {
     console.log("[skip send] 'to' inválido:", to, body);
     return;
   }
+
   if (!client || !FROM) {
-    console.log("[dev reply]", { to, body, mediaUrl });
+    console.log(
+      "[dev reply] (sem TWILIO_ACCOUNT_SID/AUTH_TOKEN/WHATSAPP_FROM)",
+      { to, body, mediaUrl }
+    );
     return;
   }
+
   const payload = { from: FROM, to, body };
   if (mediaUrl) payload.mediaUrl = mediaUrl;
-  return client.messages.create(payload);
+
+  try {
+    const resp = await client.messages.create(payload);
+    console.log("[sent]", { sid: resp.sid, to: resp.to, status: resp.status });
+    return resp;
+  } catch (err) {
+    // Logs úteis pra debugar rápido no Render/Twilio
+    console.error(
+      "[twilio send error]",
+      err?.status || "",
+      err?.code || "",
+      err?.message || "",
+      err?.moreInfo || ""
+    );
+  }
 }
 
 // Healthcheck da rota montada em /webhooks/whatsapp
@@ -44,8 +63,10 @@ router.get("/", (req, res) => res.send("whatsapp webhook live"));
 router.post("/", async (req, res) => {
   try {
     // Twilio envia application/x-www-form-urlencoded
-    const from = req.body && typeof req.body.From === "string" ? req.body.From : null; // "whatsapp:+55..."
-    const text = req.body && typeof req.body.Body === "string" ? req.body.Body : "";
+    const from =
+      req.body && typeof req.body.From === "string" ? req.body.From : null; // "whatsapp:+55..."
+    const text =
+      req.body && typeof req.body.Body === "string" ? req.body.Body : "";
 
     console.log("[inbound]", { from, text });
 
@@ -75,7 +96,10 @@ router.post("/", async (req, res) => {
         return res.sendStatus(200);
       }
       if (low.includes("nao") || low.includes("não")) {
-        await sendWhats(from, "Beleza, emissão cancelada. Posso te ajudar com mais alguma coisa?");
+        await sendWhats(
+          from,
+          "Beleza, emissão cancelada. Posso te ajudar com mais alguma coisa?"
+        );
         sessions.set(from, { state: "idle", data: {} });
         return res.sendStatus(200);
       }
@@ -89,7 +113,10 @@ router.post("/", async (req, res) => {
         return res.sendStatus(200);
       }
       if (low.includes("nao") || low.includes("não")) {
-        await sendWhats(from, "Certo! Não vou enviar por e-mail. Precisa de mais algo?");
+        await sendWhats(
+          from,
+          "Certo! Não vou enviar por e-mail. Precisa de mais algo?"
+        );
         sessions.set(from, { state: "idle", data: {} });
         return res.sendStatus(200);
       }
@@ -106,7 +133,10 @@ router.post("/", async (req, res) => {
       session.data.cliente = cliente ?? session.data.cliente;
 
       if (!session.data.cliente) {
-        await sendWhats(from, "Pra quem é a nota? Me diga o *nome do seu cliente* ou o *CNPJ*.");
+        await sendWhats(
+          from,
+          "Pra quem é a nota? Me diga o *nome do seu cliente* ou o *CNPJ*."
+        );
         session.state = "await_client_for_emit";
         return res.sendStatus(200);
       }
@@ -116,7 +146,10 @@ router.post("/", async (req, res) => {
         return res.sendStatus(200);
       }
       if (!session.data.descricao) {
-        await sendWhats(from, "Qual *descrição* você quer colocar na nota? (pode digitar um texto curto)");
+        await sendWhats(
+          from,
+          "Qual *descrição* você quer colocar na nota? (pode digitar um texto curto)"
+        );
         session.state = "await_desc_for_emit";
         return res.sendStatus(200);
       }
@@ -145,7 +178,10 @@ router.post("/", async (req, res) => {
     if (session.state === "await_value_for_emit") {
       const v = extractValueBRL(text);
       if (v == null) {
-        await sendWhats(from, "Não reconheci o valor. Pode mandar no formato *350* ou *R$ 350,00*?");
+        await sendWhats(
+          from,
+          "Não reconheci o valor. Pode mandar no formato *350* ou *R$ 350,00*?"
+        );
         return res.sendStatus(200);
       }
       session.data.valor = v;
@@ -172,12 +208,18 @@ router.post("/", async (req, res) => {
 
     // CANCELAR
     if (intent === "cancelar_nota") {
-      await sendWhats(from, "Para *cancelar*, pode me dizer o *número da nota* ou o *nome do seu cliente*?");
+      await sendWhats(
+        from,
+        "Para *cancelar*, pode me dizer o *número da nota* ou o *nome do seu cliente*?"
+      );
       session.state = "await_cancel_ident";
       return res.sendStatus(200);
     }
     if (session.state === "await_cancel_ident") {
-      await sendWhats(from, "Encontrei a nota nº 10 da *Maria da Silva*. Confirma o *cancelamento*? (SIM/NÃO)");
+      await sendWhats(
+        from,
+        "Encontrei a nota nº 10 da *Maria da Silva*. Confirma o *cancelamento*? (SIM/NÃO)"
+      );
       session.state = "await_cancel_confirm";
       return res.sendStatus(200);
     }
@@ -216,7 +258,10 @@ router.post("/", async (req, res) => {
         const emailMatch = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
         if (emailMatch) {
           session.data.email = emailMatch[0];
-          await sendWhats(from, `Confirma o envio da nota para *${session.data.email}*? (SIM/NÃO)`);
+          await sendWhats(
+            from,
+            `Confirma o envio da nota para *${session.data.email}*? (SIM/NÃO)`
+          );
           session.state = "await_send_email_confirm";
           return res.sendStatus(200);
         } else {
@@ -240,7 +285,10 @@ router.post("/", async (req, res) => {
         return res.sendStatus(200);
       }
       session.data.email = emailMatch[0];
-      await sendWhats(from, `Confirma o envio da nota para *${session.data.email}*? (SIM/NÃO)`);
+      await sendWhats(
+        from,
+        `Confirma o envio da nota para *${session.data.email}*? (SIM/NÃO)`
+      );
       session.state = "await_send_email_confirm";
       return res.sendStatus(200);
     }
