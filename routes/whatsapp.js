@@ -23,13 +23,12 @@ const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || "https://example.com";
 // --- Sessões simples em memória (MVP) ---
 const sessions = new Map();
 
-// Envio com guarda + LOGS (não quebra se faltar algo)
+// Envio com guarda + LOGS
 async function sendWhats(to, body, mediaUrl) {
   if (!to || typeof to !== "string" || !to.startsWith("whatsapp:")) {
     console.log("[skip send] 'to' inválido:", to, body);
     return;
   }
-
   if (!client || !FROM) {
     console.log(
       "[dev reply] (sem TWILIO_ACCOUNT_SID/AUTH_TOKEN/WHATSAPP_FROM)",
@@ -37,7 +36,6 @@ async function sendWhats(to, body, mediaUrl) {
     );
     return;
   }
-
   const payload = { from: FROM, to, body };
   if (mediaUrl) payload.mediaUrl = mediaUrl;
 
@@ -46,7 +44,6 @@ async function sendWhats(to, body, mediaUrl) {
     console.log("[sent]", { sid: resp.sid, to: resp.to, status: resp.status });
     return resp;
   } catch (err) {
-    // Logs úteis pra debugar rápido no Render/Twilio
     console.error(
       "[twilio send error]",
       err?.status || "",
@@ -310,9 +307,10 @@ router.post("/", async (req, res) => {
     // Nunca derruba o processo por erro de entrada
     return res.sendStatus(200);
   }
-  // --- Status Callback para ver entrega no log ---
+});
+
+// --- Status Callback para ver entrega no log ---
 router.post("/status", (req, res) => {
-  // Twilio envia application/x-www-form-urlencoded
   const sid = req.body.MessageSid;
   const status = req.body.MessageStatus; // queued, sent, delivered, undelivered, failed
   const errorCode = req.body.ErrorCode;  // se houver
