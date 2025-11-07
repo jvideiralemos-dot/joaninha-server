@@ -318,8 +318,6 @@ router.post("/status", (req, res) => {
   const errorCode = req.body.ErrorCode;  // se houver
   console.log("[status]", { sid, status, errorCode });
   res.sendStatus(200);
-}
-
 });
 
 module.exports = router;
