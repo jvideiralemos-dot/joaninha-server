@@ -1,5 +1,4 @@
-import express from "express";
-import fetch from "node-fetch";
+const express = require("express");
 
 const app = express();
 app.use(express.json());
@@ -17,6 +16,8 @@ const WHATSAPP_GRAPH_VERSION = process.env.WHATSAPP_GRAPH_VERSION || "v22.0";
 // ==========================
 // HEALTH CHECK
 // ==========================
+app.get("/health", (req, res) => res.status(200).send("ok"));
+
 app.get("/", (req, res) => {
   res.json({ status: "ok", service: "joaninha-server" });
 });
@@ -44,7 +45,6 @@ app.get("/webhook", (req, res) => {
 app.post("/webhook", (req, res) => {
   console.log("📩 Evento recebido do WhatsApp:");
   console.dir(req.body, { depth: null });
-
   res.sendStatus(200);
 });
 
@@ -53,11 +53,15 @@ app.post("/webhook", (req, res) => {
 // ==========================
 app.post("/send", async (req, res) => {
   try {
-    const { to, text } = req.body;
+    const { to, text } = req.body || {};
 
     if (!to || !text) {
-      return res.status(400).json({
-        error: "Campos obrigatórios: to, text",
+      return res.status(400).json({ error: "Campos obrigatórios: to, text" });
+    }
+
+    if (!WHATSAPP_TOKEN || !WHATSAPP_PHONE_NUMBER_ID) {
+      return res.status(500).json({
+        error: "WHATSAPP_TOKEN ou WHATSAPP_PHONE_NUMBER_ID não configurados no Render",
       });
     }
 
@@ -67,9 +71,7 @@ app.post("/send", async (req, res) => {
       messaging_product: "whatsapp",
       to,
       type: "text",
-      text: {
-        body: text,
-      },
+      text: { body: text },
     };
 
     const response = await fetch(url, {
@@ -81,18 +83,18 @@ app.post("/send", async (req, res) => {
       body: JSON.stringify(payload),
     });
 
-    const data = await response.json();
+    const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
       console.error("❌ Erro ao enviar mensagem:", data);
-      return res.status(500).json(data);
+      return res.status(response.status).json(data);
     }
 
     console.log("✅ Mensagem enviada com sucesso:", data);
-    res.json({ success: true, data });
+    return res.json({ success: true, data });
   } catch (error) {
     console.error("🔥 Erro interno:", error);
-    res.status(500).json({ error: "Erro interno no servidor" });
+    return res.status(500).json({ error: "Erro interno no servidor" });
   }
 });
 
